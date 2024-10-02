@@ -1,0 +1,198 @@
+#!/bin/bash
+
+# Copyright (C) 2024 Murilo Gomes Julio
+# SPDX-License-Identifier: MIT
+
+# Murilo Gomes
+# Site: https://linktr.ee/mugomes
+
+while true; do
+	echo ""
+	echo "-------------------------------- MGPBuild --------------------------------"
+    echo "Selecione uma opção:"
+    echo "1. Baixar uma versão mais recente do PHP"
+    echo "2. Compilar o PHP"
+	echo ""
+    echo "3. Criar arquivo AppRun, .desktop e imagem"
+    echo "4. Executar linuxdeploy"
+    echo "5. Executar appimagetool"
+	echo ""
+    echo "6. Instalar o MGPBuild"
+    echo "7. Instalar linuxdeploy e appimagetool"
+    echo "8. Instalar dependencias do PHP"
+	echo ""
+    echo "9. Sair"
+    echo "-------------------------------- /MGPBuild --------------------------------"
+	echo ""
+	
+    read -p "Opção: " option
+
+    case $option in
+    	1)  
+    		read -p "Digite a versão do PHP: " versaodophp
+    		read -p "Digite o hash do PHP: " hashdophp
+    		
+    		rm -f php-$versaodophp.tar.gz
+    		wget -O php-$versaodophp.tar.gz https://www.php.net/distributions/php-$versaodophp.tar.gz
+    		
+    		if [ "$(cat php-$versaodophp.tar.gz | sha256sum | head -c 64)" = "$hashdophp" ]; then
+    			echo 'Hash correto!'
+    		else
+    			echo 'Hash incorreto!'
+    		fi
+    		;;
+    	2)
+			read -p "Digite a versão do PHP: " versaodophp
+			
+    		rm -rf build/
+    		mkdir -p build/
+			tar -xzf php-$versaodophp.tar.gz -C build/
+
+			cd build/php*/
+			
+			./configure \
+			--enable-soap --with-libxml \
+			--enable-bcmath \
+			--enable-calendar \
+			--enable-opcache \
+			--enable-mbstring \
+			--enable-intl \
+			--enable-mysqlnd \
+			--enable-gd \
+			--enable-exif \
+			--enable-dba \
+			--enable-ftp \
+			--enable-pcntl \
+			--enable-shmop \
+			--enable-sockets \
+			--enable-sysvmsg \
+			--enable-sysvsem \
+			--enable-sysvshm \
+			--with-imap \
+			--with-kerberos \
+			--with-imap-ssl \
+			--with-bz2 \
+			--with-zlib \
+			--with-readline \
+			--with-curl \
+			--with-openssl \
+			--with-password-argon2 \
+			--with-sodium \
+			--with-pear \
+			--with-gmp \
+			--with-mysqli=mysqlnd \
+			--with-pdo-mysql=mysqlnd \
+			--with-pdo-pgsql \
+			--with-pgsql \
+			--with-zip \
+			--with-xsl \
+			--with-jpeg \
+			--with-webp \
+			--with-avif \
+			--with-tidy
+
+			alterandounamenophpconfig=$(uname -a)
+			sed -i "s|${alterandounamenophpconfig}|Linux|g" main/php_config.h
+
+			make -j $(nproc)
+			
+			cd ../../
+			;;			 		
+        3)		
+			rm -rf AppDir/	
+			mkdir -p AppDir/
+
+            # Criar arquivo AppRun
+            cat <<EOF > "AppDir/AppRun"
+#!/bin/sh
+
+exec "\$(dirname "\$0")"/lprun "\$@"
+EOF
+
+			# Gera o LPRun
+			cat <<EOF > "AppDir/lprun"
+#!/bin/bash
+
+export LD_LIBRARY_PATH="\${APPIMAGE_LIBRARY_PATH}:\${APPDIR}/usr/lib:\${LD_LIBRARY_PATH}"
+\${APPDIR}/usr/bin/php \$@
+EOF
+
+            # Copia o PHP para a pasta AppDir e cria o arquivo ShellScript
+			mkdir -p AppDir/usr/share/php/
+            cp -f build/php*/sapi/cli/php AppDir/
+			cp -f build/php*/LICENSE AppDir/usr/share/php/
+
+			chmod +x "AppDir/lprun"
+
+            # Criar arquivo .desktop
+            cat <<EOF > "AppDir/lprun.desktop"
+[Desktop Entry]
+Name=lprun
+Exec=lprun %U
+Icon=lprun
+Type=Application
+Terminal=true
+Categories=Development
+EOF
+
+            # Criar imagem azul
+            convert -size 32x32 xc:"#0074a3" "AppDir/lprun.png"
+            echo "Arquivos criados com sucesso!"
+            ;;
+        4)            
+			chmod +x "AppDir/php"
+            /opt/mgpbuild/linuxdeploy/linuxdeploy --appdir AppDir --executable "AppDir/php" --desktop-file "AppDir/lprun.desktop" --icon-file "AppDir/lprun.png"
+            ;;
+        5)			
+            ARCH=x86_64 /opt/mgpbuild/appimagetool/appimagetool AppDir
+            ;;
+         
+        6) 
+        	echo "Removendo versões anteriores..."
+        	sudo rm -f /usr/bin/mgpbuild
+        	
+        	echo "Instalando o MGPBuild..."
+			sudo cp mgpbuild /usr/bin/mgpbuild
+			sudo chmod +x /usr/bin/mgpbuild
+        	;;   
+        7)
+        	echo "Criando pasta tmp..."
+            mkdir -p tmp/linuxdeploy/
+            mkdir -p tmp/appimagetool/
+            
+            echo "Removendo versões anteriores..."
+            sudo rm -rf /opt/mgpbuild/
+                        
+            echo "Criando pastas..."
+            sudo mkdir -p /opt/mgpbuild/linuxdeploy/
+            sudo mkdir -p /opt/mgpbuild/appimagetool/
+            
+            echo "Instalando o appstream..."
+            sudo apt-get install appstream
+            
+            echo "Baixando e instalando o linuxdeploy..."
+            wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O tmp/linuxdeploy/linuxdeploy-x86_64.AppImage
+            sudo cp tmp/linuxdeploy/linuxdeploy-x86_64.AppImage /opt/mgpbuild/linuxdeploy/linuxdeploy
+			sudo chmod +x /opt/mgpbuild/linuxdeploy/linuxdeploy
+			
+			echo "Baixando e instalando o appimagetool..." 
+			wget "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O tmp/appimagetool/appimagetool-x86_64.AppImage
+			sudo cp tmp/appimagetool/appimagetool-x86_64.AppImage /opt/mgpbuild/appimagetool/appimagetool
+			sudo chmod +x /opt/mgpbuild/appimagetool/appimagetool
+			
+			echo "Removendo o tmp..."
+			rm -rf tmp/
+            ;;
+        8)
+        	echo "Instalando as dependencias do PHP para compilação..."
+			sudo apt install build-essential autoconf libtool bison re2c pkg-config build-essential pkg-config autoconf libtool bison re2c libxml2-dev libonig-dev libssl-dev libargon2-0-dev libsodium-dev libcurl4-openssl-dev libreadline-dev libyaml-dev libgmp-dev libzip-dev libpng-dev libjpeg-dev libwebp-dev libxpm-dev libicu-dev libfreetype6-dev libxslt-dev libldb-dev libvips-dev libsqlite3-dev libcurl4-openssl-dev libzip-dev libpng-dev libjpeg-dev libwebp-dev libavif-dev libonig-dev libzip-dev libenchant-2-dev libc-client2007e-dev libkrb5-dev -y
+        	;;
+        9)
+            echo "Saindo..."
+            exit 0
+            ;;
+        *)
+            echo "Opção inválida. Por favor, escolha uma opção válida."
+            ;;
+    esac
+done
